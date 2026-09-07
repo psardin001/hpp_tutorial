@@ -1,5 +1,4 @@
 import numpy as np
-from manipulation_timing import toppra_with_stops
 from pinocchio import SE3, neutral
 from pyhpp.constraints import ComparisonType, ComparisonTypes, Implicit, Transformation
 from pyhpp.core import ConfigProjector, Progressive, ProgressiveProjector
@@ -13,8 +12,8 @@ from pyhpp.manipulation import (
     urdf,
 )
 from pyhpp.manipulation.constraint_graph_factory import ConstraintGraphFactory
-from pyhpp_toppra import Toppra
 from pyhpp_viser import Viewer  # noqa: F401
+from tools import Toppra
 
 robot = Device("mfja")
 
@@ -229,4 +228,4 @@ toppra.N = 100
 toppra.selectJoints([f"staubli/joint_{i}" for i in range(1, 7)])
 # Reserve 10% of the 0.5 rad/s² limit for numerical projection effects.
 toppra.accelerationLimits = np.array(6 * [0.45])
-p2 = toppra_with_stops(p1, toppra)
+p2 = toppra.optimize(p1)

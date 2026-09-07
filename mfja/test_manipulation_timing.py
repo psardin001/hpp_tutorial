@@ -2,12 +2,11 @@
 
 import numpy as np
 import pytest
-from manipulation_timing import toppra_with_stops
 from pinocchio import SE3
 from pyhpp.core import InterpolatedPath, Problem, StraightPath, interval
 from pyhpp.core.path import Vector
 from pyhpp.pinocchio import Device, urdf
-from pyhpp_toppra import Toppra
+from tools import Toppra
 
 
 @pytest.fixture
@@ -33,6 +32,7 @@ def timing_problem():
     toppra.velocityScale = 0.5
     toppra.accelerationLimits = np.array([0.5])
     toppra.N = 100
+    toppra.selectJoints(["arm/joint"])
     return robot, toppra
 
 
@@ -48,7 +48,7 @@ def test_stops_at_nested_boundaries_and_internal_interpolation_points(timing_pro
     path.appendPath(StraightPath(robot, np.array([-0.2]), q0, interval(0.0, 0.2), None))
     path.appendPath(nested)
 
-    timed = toppra_with_stops(path, toppra)
+    timed = toppra.optimize(path)
 
     assert timed.numberPaths() == 3
     assert path.numberPaths() == 3
@@ -73,4 +73,4 @@ def test_rejects_portions_that_toppra_would_return_untimed(timing_problem):
         )
     )
     with pytest.raises(ValueError, match="too short"):
-        toppra_with_stops(path, toppra)
+        toppra.optimize(path)
