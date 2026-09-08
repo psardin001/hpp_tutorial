@@ -13,7 +13,7 @@ from pyhpp.manipulation import (
 )
 from pyhpp.manipulation.constraint_graph_factory import ConstraintGraphFactory
 from pyhpp_viser import Viewer  # noqa: F401
-from tools import Toppra
+from tools import SplineToppra
 
 robot = Device("mfja")
 
@@ -222,7 +222,7 @@ p = manipulationPlanner.solve()
 opt1 = GraphRandomShortcut(problem)
 p1 = opt1.optimize(p)
 
-toppra = Toppra(problem)
+toppra = SplineToppra(problem, graph)
 toppra.velocityScale = 0.5
 toppra.N = 100
 toppra.selectJoints([f"staubli/joint_{i}" for i in range(1, 7)])
