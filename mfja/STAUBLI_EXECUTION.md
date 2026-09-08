@@ -19,8 +19,8 @@ checking them, then create a new plan.
 
 The execution planner reads `room_315_only.world` and
 `robots_room_315_only.yaml` from the supplied MFJA checkout. It transforms the
-world's rigid collision fixtures into the robot-base frame and saves that scene
-with the plan. It does not use the older `room315_cell.urdf`. Check the actual
+world's rigid collision fixtures into the robot-base frame for planning and
+preview. It does not use the older `room315_cell.urdf`. Check the actual
 table, rails and surrounding fixed equipment against the preview: a world-file
 pose is not a measurement of a movable object. Sun and ground plane are omitted.
 The inherited planner also disables gripper-to-gear collisions; inspect finger
@@ -48,6 +48,13 @@ continuous validation on every timed subpath using its manipulation transition.
 An invalid subpath or a validation exception aborts planning before writing the
 JSON. Regenerate older saved plans to apply both timing and validation changes.
 These are planning settings; the VAL3 execution behavior is described below.
+
+`two_gears.py` plans, validates and exports the `hpp-exec` segments.
+`two_gears_execute.py` loads them and calls `execute_segments([segment], ...)`.
+`staubli_io.py` contains the gripper command and measured-position check.
+The JSON carries six arm positions per sample, times, segment metadata,
+gripper states and configuration. Regenerate plans from the previous format.
+
 The local `Staubli_ROS2` driver changes preserve fractional timestamps, respect
 requested speeds below the fallback and mark the final point even when no
 velocities are provided. Rebuild the changed driver before hardware bringup:
@@ -81,13 +88,11 @@ In a **ROS terminal**, with the authorized controller prepared, bring up the
 local hardware stack. Replace both placeholders with commissioned values:
 
 ```bash
-source /opt/ros/jazzy/setup.bash
-source "$MFJA_WS/install/setup.bash"
 ros2 launch mfja_staubli_manipulation_demos room_315_staubli_hardware.launch.py \
   robot_ip:=CONTROLLER_IP joint_config:=/absolute/path/to/commissioned.yaml
 ```
 
-In another sourced ROS terminal, check the endpoints and read the current pose:
+In another configured terminal, check the endpoints and read the current pose:
 
 ```bash
 ros2 action info /manipulator_controller/joint_trajectory_action
@@ -106,17 +111,17 @@ In a separate **HPP terminal**, plan from those six measured values:
 
 ```bash
 cd "$HPP_TUTORIAL_DIR/mfja"
-python two_gears_execute.py plan /tmp/two-gears.json \
+python two_gears.py /tmp/two-gears.json \
   --mfja-root "$MFJA_ROOT" \
-  --q-start J1 J2 J3 J4 J5 J6
-python two_gears_execute.py inspect /tmp/two-gears.json
-python two_gears_execute.py view /tmp/two-gears.json --segment 0
+  --q-start J1 J2 J3 J4 J5 J6 --view
 ```
 
-Replace `J1 … J6`, then open the printed Viser URL and press Enter to play.
-Preview **every** segment by changing its index. Reuse this saved JSON for all
-execution; `view` and `execute` never replan. If fixtures or model files change,
-replan and review again.
+Replace `J1 … J6`, then open the printed Viser URL. The viewer loads the complete
+validated path. Use its time slider and the printed segment time intervals to
+review **every** phase before closing the viewer. The planner also prints their
+indices and transition names. Omit `--view` for an offline planning check.
+The execution script reuses the saved JSON and never replans. If fixtures or
+model files change, replan and review again.
 
 ## 4. Execute one segment, then inspect
 
@@ -129,7 +134,7 @@ In the ROS terminal, select the same source checkout and saved plan:
 
 ```bash
 cd "$HPP_TUTORIAL_DIR/mfja"
-python two_gears_execute.py execute /tmp/two-gears.json --segment 0
+python two_gears_execute.py /tmp/two-gears.json --segment 0
 ```
 
 This command **operates the gripper and moves the robot**. It checks the starting

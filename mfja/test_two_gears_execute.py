@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import numpy as np
+import staubli_io
 import two_gears_execute as runner
 
 
@@ -17,18 +18,16 @@ def sample_plan():
             execution=dict(joint_tolerance_rad=0.03, trajectory_action="/test/action"),
         ),
         configurations=[[0.0] * 6, [0.1] * 6, [0.2] * 6],
-        joint_indices=list(range(6)),
         times=[0.0, 1.0, 2.0],
         segments=[
             dict(
                 start_index=i,
                 end_index=i + 2,
                 transition_name=f"transition {i}",
-                containing_state="test state",
-                gripper=mode,
             )
-            for i, mode in enumerate(("close", "open"))
+            for i in range(2)
         ],
+        gripper=["close", "open"],
     )
 
 
@@ -42,8 +41,9 @@ class PlanValidation(unittest.TestCase):
             ("times", [0, 0, 1]),
             ("times", [0, 1, float("nan")]),
             ("configurations", [[float("nan")] * 6] * 3),
-            ("joint_indices", [0] * 6),
-            ("joint_indices", list(range(1, 7))),
+            ("configurations", [[0.0] * 7] * 3),
+            ("gripper", ["open"]),
+            ("gripper", ["open", "invalid"]),
             ("segments", []),
         ):
             with self.subTest(key=key, value=value):
@@ -51,7 +51,7 @@ class PlanValidation(unittest.TestCase):
                 invalid[key] = value
                 with self.assertRaises(ValueError):
                     runner.validate_plan(invalid)
-        for key, value in (("start_index", 2), ("gripper", "invalid")):
+        for key, value in (("start_index", 2), ("end_index", 4)):
             invalid = copy.deepcopy(plan)
             invalid["segments"][1][key] = value
             with self.assertRaises(ValueError):
@@ -65,78 +65,6 @@ class PlanValidation(unittest.TestCase):
                 runner.execute(plan, 0)
 
 
-class PathValidation(unittest.TestCase):
-    def setUp(self):
-        self.path = Mock()
-        self.leaves = [Mock(), Mock(), Mock()]
-        for leaf, duration in zip(self.leaves, (1.0, 2.0, 1.0)):
-            leaf.length.return_value = duration
-        flat = Mock()
-        flat.numberPaths.return_value = len(self.leaves)
-        flat.pathAtRank.side_effect = self.leaves
-        modules = patch.dict(
-            sys.modules,
-            {"pyhpp.core.path": SimpleNamespace(Vector=Mock(return_value=flat))},
-        )
-        modules.start()
-        self.addCleanup(modules.stop)
-        self.graph = Mock()
-        self.edges = [Mock(), Mock(), Mock()]
-        self.graph.transitionAtParam.side_effect = self.edges
-        for edge in self.edges:
-            edge.pathValidation.return_value.validate.return_value = (True, None, None)
-
-    def test_checks_each_timed_subpath_with_its_transition(self):
-        runner.validate_path(self.path, self.graph)
-        self.assertEqual(
-            [call.args for call in self.graph.transitionAtParam.call_args_list],
-            [(self.path, 0.5), (self.path, 2.0), (self.path, 3.5)],
-        )
-        for edge, leaf in zip(self.edges, self.leaves):
-            edge.pathValidation.return_value.validate.assert_called_once_with(
-                leaf, False
-            )
-
-    def test_rejects_invalid_middle_subpath(self):
-        self.edges[1].name.return_value = "placement"
-        self.edges[1].pathValidation.return_value.validate.return_value = (
-            False,
-            None,
-            "collision",
-        )
-        with self.assertRaisesRegex(RuntimeError, "subpath 1 .*placement.*collision"):
-            runner.validate_path(self.path, self.graph)
-        self.edges[2].pathValidation.assert_not_called()
-
-    def test_native_validation_exception_propagates(self):
-        self.edges[0].pathValidation.return_value.validate.side_effect = ValueError(
-            "wrong argument size"
-        )
-        with self.assertRaisesRegex(ValueError, "wrong argument size"):
-            runner.validate_path(self.path, self.graph)
-
-    def test_planning_validates_before_sampling(self):
-        sample = Mock()
-        with patch.dict(
-            sys.modules,
-            {
-                "hpp_exec": SimpleNamespace(segments_from_graph=sample),
-                "staubli_scene": SimpleNamespace(read_room=lambda _: ("room", [])),
-                "two_gears": SimpleNamespace(solve=lambda _: self.path),
-            },
-        ):
-            with patch.object(
-                runner, "build_scene", return_value=(None, self.graph, None)
-            ):
-                with patch.object(
-                    runner, "validate_path", side_effect=RuntimeError("invalid path")
-                ) as validate:
-                    with self.assertRaisesRegex(RuntimeError, "invalid path"):
-                        runner.make_plan({}, [0.0] * 6, "unused")
-        validate.assert_called_once_with(self.path, self.graph)
-        sample.assert_not_called()
-
-
 class Execution(unittest.TestCase):
     def setUp(self):
         self.node = Mock()
@@ -148,15 +76,20 @@ class Execution(unittest.TestCase):
                 "rclpy": self.ros,
                 "rclpy.node": SimpleNamespace(Node=Mock(return_value=self.node)),
                 "hpp_exec": SimpleNamespace(
-                    Segment=lambda start, end, **kw: SimpleNamespace(
-                        start_index=start, end_index=end, pre_actions=[], **kw
-                    ),
+                    Segment=lambda **kw: SimpleNamespace(pre_actions=[], **kw),
                     execute_segments=self.executor,
                 ),
             },
         )
         self.modules.start()
         self.addCleanup(self.modules.stop)
+
+    def test_invalid_index_never_initializes_ros(self):
+        for index in (-1, 2):
+            with self.assertRaisesRegex(ValueError, "Segment index"):
+                runner.execute(sample_plan(), index)
+        self.ros.init.assert_not_called()
+        self.executor.assert_not_called()
 
     def test_only_selected_segment_and_gripper(self):
         def send(segments, *args, **kwargs):
@@ -214,7 +147,7 @@ class Execution(unittest.TestCase):
                     {"hpp_exec": SimpleNamespace(read_current_configuration=reader)},
                 ):
                     with self.assertRaises(RuntimeError):
-                        runner.check_position(self.node, config, np.zeros(6))
+                        staubli_io.check_position(self.node, config, np.zeros(6))
 
     def test_gripper_polarity_and_service_failure(self):
         service = SimpleNamespace(
@@ -238,13 +171,13 @@ class Execution(unittest.TestCase):
                 future.result.return_value = SimpleNamespace(
                     code=SimpleNamespace(val=0)
                 )
-                self.assertTrue(runner.set_gripper(self.node, config, mode))
+                self.assertTrue(staubli_io.set_gripper(self.node, config, mode))
                 request = client.call_async.call_args.args[0]
                 self.assertEqual(request.state, mode == "open")
                 self.assertEqual((request.module.id, request.pin), (2, 0))
             future.result.return_value = None
             with self.assertRaisesRegex(RuntimeError, "Gripper command failed"):
-                runner.set_gripper(self.node, config, "open")
+                staubli_io.set_gripper(self.node, config, "open")
         self.assertEqual(self.node.destroy_client.call_count, 3)
 
 

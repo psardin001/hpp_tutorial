@@ -1,7 +1,18 @@
+"""Plan, validate and export the two-gear manipulation segments."""
+
+import argparse
+import json
+from dataclasses import asdict
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
 import numpy as np
+import yaml
+from hpp_exec import print_segments, segments_from_graph
 from pinocchio import SE3, XYZQUATToSE3, neutral
 from pyhpp.constraints import ComparisonType, ComparisonTypes, Implicit, Transformation
 from pyhpp.core import ConfigProjector, Progressive, ProgressiveProjector
+from pyhpp.core.path import Vector
 from pyhpp.manipulation import (
     Device,
     Graph,
@@ -12,6 +23,8 @@ from pyhpp.manipulation import (
     urdf,
 )
 from pyhpp.manipulation.constraint_graph_factory import ConstraintGraphFactory
+from staubli_io import JOINT_NAMES
+from staubli_scene import placement, read_room
 from tools import Toppra
 
 
@@ -244,13 +257,88 @@ def solve(problem):
     # Reserve 10% of the 0.5 rad/s² limit for numerical projection effects.
     toppra.accelerationLimits = np.array(6 * [0.45])
     p2 = toppra.optimize(p1)
+    validate_path(p2, problem.constraintGraph())
     return p2
 
 
-if __name__ == "__main__":
-    robot, graph, problem = build_problem(
-        np.zeros(6),
-        [0.52453, -0.1815, 0.0, 0.0, 0.0, 0.0, 1.0],
-        [0.58753, 0.039, 0.0, 0.0, 0.0, 0.0, 1.0],
+def validate_path(path, graph):
+    """Validate each timed subpath with its manipulation transition."""
+    flat = Vector(path.outputSize(), path.outputDerivativeSize())
+    path.flatten(flat)
+    start = 0.0
+    for i in range(flat.numberPaths()):
+        leaf = flat.pathAtRank(i)
+        edge = graph.transitionAtParam(path, start + leaf.length() / 2)
+        valid, _, report = edge.pathValidation().validate(leaf, False)
+        if not valid:
+            raise RuntimeError(f"Invalid timed subpath {i} ({edge.name()}): {report}")
+        start += leaf.length()
+
+
+def export_plan(file, robot, graph, path, config, q_start):
+    """Save hpp-exec segments and the six arm joints for the ROS process."""
+    configs, times, segments = segments_from_graph(path, graph)
+    indices = [robot.rankInConfiguration["staubli/" + name] for name in JOINT_NAMES]
+    joints = np.asarray(configs)[:, indices]
+    if not np.allclose(joints[0], q_start, atol=1e-6, rtol=0):
+        raise RuntimeError("Planning changed the requested arm start configuration")
+    gripper = []
+    for segment in segments:
+        state = str(
+            graph.getContainingNode(graph.getTransition(segment.transition_name))
+        )
+        gripper.append(
+            "close" if "staubli/tool0_gripper grasps gear_42_" in state else "open"
+        )
+    plan = dict(
+        config=config,
+        configurations=joints.tolist(),
+        times=times,
+        segments=[asdict(segment) for segment in segments],
+        gripper=gripper,
     )
-    p2 = solve(problem)
+    file.write_text(json.dumps(plan, indent=2, allow_nan=False) + "\n")
+    print_segments(segments)
+    return segments
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("file", type=Path)
+    parser.add_argument("--q-start", type=float, nargs=6, required=True)
+    parser.add_argument("--mfja-root", type=Path, required=True)
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=Path(__file__).with_name("two_gears_execution.yaml"),
+    )
+    parser.add_argument("--view", action="store_true")
+    args = parser.parse_args()
+    config = yaml.safe_load(args.config.read_text())
+    room, base = read_room(args.mfja_root)
+    with TemporaryDirectory(prefix="two-gears-") as directory:
+        cell = Path(directory) / "room315.urdf"
+        cell.write_text(room)
+        srdf = cell.with_suffix(".srdf")
+        srdf.write_text('<robot name="room315"/>')
+        robot, graph, problem = build_problem(
+            args.q_start,
+            config["gear_plate_pose"],
+            config["gear_support_pose"],
+            (str(cell), str(srdf), placement(base).inverse()),
+        )
+        path = solve(problem)
+        export_plan(args.file, robot, graph, path, config, args.q_start)
+        if args.view:
+            from pyhpp_viser import Viewer
+
+            viewer = Viewer(robot)
+            viewer.initViewer(open=False, loadModel=True)
+            viewer.setProblem(problem)
+            viewer.setGraph(graph)
+            viewer.loadPath(path)
+            input("Preview the planned path in Viser, then press Enter to close. ")
+
+
+if __name__ == "__main__":
+    main()
