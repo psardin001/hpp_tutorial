@@ -42,6 +42,7 @@ def make_plan(config, q_start, mfja_root):
     with TemporaryDirectory(prefix="two-gears-") as directory:
         robot, graph, problem = build_scene(plan, directory)
         path = solve(problem)
+        validate_path(path, graph)
         configs, times, segments = segments_from_graph(path, graph)
         indices = [robot.rankInConfiguration["staubli/" + name] for name in JOINT_NAMES]
         plan.update(
@@ -68,6 +69,22 @@ def make_plan(config, q_start, mfja_root):
     ):
         raise RuntimeError("Planning changed the requested arm start configuration")
     return plan
+
+
+def validate_path(path, graph):
+    """Validate each timed subpath with its manipulation transition."""
+    from pyhpp.core.path import Vector
+
+    flat = Vector(path.outputSize(), path.outputDerivativeSize())
+    path.flatten(flat)
+    start = 0.0
+    for i in range(flat.numberPaths()):
+        leaf = flat.pathAtRank(i)
+        edge = graph.transitionAtParam(path, start + leaf.length() / 2)
+        valid, _, report = edge.pathValidation().validate(leaf, False)
+        if not valid:
+            raise RuntimeError(f"Invalid timed subpath {i} ({edge.name()}): {report}")
+        start += leaf.length()
 
 
 def validate_plan(plan):

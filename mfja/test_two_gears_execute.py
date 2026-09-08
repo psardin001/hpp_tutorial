@@ -65,6 +65,78 @@ class PlanValidation(unittest.TestCase):
                 runner.execute(plan, 0)
 
 
+class PathValidation(unittest.TestCase):
+    def setUp(self):
+        self.path = Mock()
+        self.leaves = [Mock(), Mock(), Mock()]
+        for leaf, duration in zip(self.leaves, (1.0, 2.0, 1.0)):
+            leaf.length.return_value = duration
+        flat = Mock()
+        flat.numberPaths.return_value = len(self.leaves)
+        flat.pathAtRank.side_effect = self.leaves
+        modules = patch.dict(
+            sys.modules,
+            {"pyhpp.core.path": SimpleNamespace(Vector=Mock(return_value=flat))},
+        )
+        modules.start()
+        self.addCleanup(modules.stop)
+        self.graph = Mock()
+        self.edges = [Mock(), Mock(), Mock()]
+        self.graph.transitionAtParam.side_effect = self.edges
+        for edge in self.edges:
+            edge.pathValidation.return_value.validate.return_value = (True, None, None)
+
+    def test_checks_each_timed_subpath_with_its_transition(self):
+        runner.validate_path(self.path, self.graph)
+        self.assertEqual(
+            [call.args for call in self.graph.transitionAtParam.call_args_list],
+            [(self.path, 0.5), (self.path, 2.0), (self.path, 3.5)],
+        )
+        for edge, leaf in zip(self.edges, self.leaves):
+            edge.pathValidation.return_value.validate.assert_called_once_with(
+                leaf, False
+            )
+
+    def test_rejects_invalid_middle_subpath(self):
+        self.edges[1].name.return_value = "placement"
+        self.edges[1].pathValidation.return_value.validate.return_value = (
+            False,
+            None,
+            "collision",
+        )
+        with self.assertRaisesRegex(RuntimeError, "subpath 1 .*placement.*collision"):
+            runner.validate_path(self.path, self.graph)
+        self.edges[2].pathValidation.assert_not_called()
+
+    def test_native_validation_exception_propagates(self):
+        self.edges[0].pathValidation.return_value.validate.side_effect = ValueError(
+            "wrong argument size"
+        )
+        with self.assertRaisesRegex(ValueError, "wrong argument size"):
+            runner.validate_path(self.path, self.graph)
+
+    def test_planning_validates_before_sampling(self):
+        sample = Mock()
+        with patch.dict(
+            sys.modules,
+            {
+                "hpp_exec": SimpleNamespace(segments_from_graph=sample),
+                "staubli_scene": SimpleNamespace(read_room=lambda _: ("room", [])),
+                "two_gears": SimpleNamespace(solve=lambda _: self.path),
+            },
+        ):
+            with patch.object(
+                runner, "build_scene", return_value=(None, self.graph, None)
+            ):
+                with patch.object(
+                    runner, "validate_path", side_effect=RuntimeError("invalid path")
+                ) as validate:
+                    with self.assertRaisesRegex(RuntimeError, "invalid path"):
+                        runner.make_plan({}, [0.0] * 6, "unused")
+        validate.assert_called_once_with(self.path, self.graph)
+        sample.assert_not_called()
+
+
 class Execution(unittest.TestCase):
     def setUp(self):
         self.node = Mock()

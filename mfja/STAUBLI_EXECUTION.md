@@ -39,12 +39,15 @@ export MFJA_WS=/path/to/mfja_ws
 ```
 
 Use the patched `hpp-manipulation` (short transitions), `hpp-exec` (nested
-path segmentation), and `hpp-python` with `InterpolatedPath.interpolationPoints`,
-the current MFJA gear models, and this exercise branch.
+path segmentation), `hpp-core` (InterpolatedPath velocity bounds), and
+`hpp-python` with `InterpolatedPath.interpolationPoints`, the current MFJA gear
+models, and this exercise branch.
 The planner uses `tools.Toppra` to stop at geometric junctions, with a velocity
-scale of 0.5 and an acceleration setting of 0.45 rad/s². Regenerate saved plans
-created before this timing change. These are planning settings; the VAL3
-execution behavior is described below.
+scale of 0.5 and an acceleration setting of 0.45 rad/s². Before saving, it runs
+continuous validation on every timed subpath using its manipulation transition.
+An invalid subpath or a validation exception aborts planning before writing the
+JSON. Regenerate older saved plans to apply both timing and validation changes.
+These are planning settings; the VAL3 execution behavior is described below.
 The local `Staubli_ROS2` driver changes preserve fractional timestamps, respect
 requested speeds below the fallback and mark the final point even when no
 velocities are provided. Rebuild the changed driver before hardware bringup:
