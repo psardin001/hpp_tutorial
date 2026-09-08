@@ -1,0 +1,13 @@
+# Fixture poses in the Stäubli base frame: x y z qx qy qz qw (metres).
+# Florent's reference layout, NOT measured by Diane's placement PR.
+calibrated: false
+gear_plate_pose: [0.52453, -0.1815, 0.0, 0.0, 0.0, 0.0, 1.0]
+gear_support_pose: [0.58753, 0.039, 0.0, 0.0, 0.0, 0.0, 1.0]
+
+execution:
+  trajectory_action: /manipulator_controller/joint_trajectory_action
+  joint_state_topic: /joint_states
+  joint_tolerance_rad: 0.03
+  gripper_service: /io_interface/write_single_io
+  gripper_pin: 0
+  gripper_settle_s: 0.5

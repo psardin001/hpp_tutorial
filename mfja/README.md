@@ -110,5 +110,7 @@ Open <http://localhost:8000> in a browser.
 
 ## API documentation
 
+For the two-gear hardware exercise, follow the
+[segment-by-segment validation guide](STAUBLI_EXECUTION.md).
+
 - [HPP documentation](https://gepetto.github.io/doc/hpp-doc/doxygen-html/index.html)
-- [Reference training branch](https://github.com/florent-lamiraux/hpp_tutorial/tree/hpp-training)
