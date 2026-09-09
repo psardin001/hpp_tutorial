@@ -2,24 +2,19 @@ import numpy as np
 from environment import initial_configuration, load_scene, set_environment_margins
 from pinocchio import SE3
 from pyhpp.constraints import ComparisonType, ComparisonTypes, Implicit, Transformation
-from pyhpp.core import (
-    ConfigProjector,
-    Progressive,
-    ProgressiveProjector,
-    RandomShortcut,
-)
+from pyhpp.core import ConfigProjector, Progressive, ProgressiveProjector
 from pyhpp.manipulation import (
     Device,
     Graph,
     GraphPathValidation,
-    ManipulationPlanner,
+    GraphRandomShortcut,
     Problem,
     StatesPathFinder,
     urdf,
 )
 from pyhpp.manipulation.constraint_graph_factory import ConstraintGraphFactory
-from pyhpp_toppra import Toppra
 from pyhpp_viser import Viewer  # noqa: F401
+from tools import SplineToppra
 
 robot = Device("mfja")
 
@@ -146,19 +141,19 @@ q2, status = cp.solver().solve(q)
 problem.initConfig(q1)
 problem.addGoalConfig(q2)
 problem.constraintGraph(graph)
-manipulationPlanner = ManipulationPlanner(problem)
 manipulationPlanner = StatesPathFinder(problem)
 manipulationPlanner.maxIterations(1000)
 p = manipulationPlanner.solve()
 
 # Optimize the path
-opt1 = RandomShortcut(problem)
+opt1 = GraphRandomShortcut(problem)
 opt1.maxIterations(1000)
 p1 = opt1.optimize(p)
 
-toppra = Toppra(problem)
+toppra = SplineToppra(problem, graph)
 toppra.velocityScale = 0.5
 toppra.N = 100
 toppra.selectJoints([f"staubli/joint_{i}" for i in range(1, 7)])
-toppra.accelerationLimits = np.array(6 * [0.5])
+# Reserve 10% of the 0.5 rad/s² limit for numerical projection effects.
+toppra.accelerationLimits = np.array(6 * [0.45])
 p2 = toppra.optimize(p1)
