@@ -123,6 +123,7 @@ set_environment_margins(graph)
 graph.initialize()
 
 q = initial_configuration(robot)
+q[:6] = globals().get("q_start", q[:6])
 
 # Build a configuration where gear_42 is placed on gripper gear_placement/placement_1
 g = robot.grippers()["gear_plate/placement_1"]
