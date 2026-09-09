@@ -1,5 +1,6 @@
 import numpy as np
-from pinocchio import SE3, neutral
+from environment import initial_configuration, load_scene, set_environment_margins
+from pinocchio import SE3
 from pyhpp.constraints import ComparisonType, ComparisonTypes, Implicit, Transformation
 from pyhpp.core import ConfigProjector, Progressive, ProgressiveProjector
 from pyhpp.manipulation import (
@@ -17,28 +18,7 @@ from tools import SplineToppra
 
 robot = Device("mfja")
 
-# Load Staubli robot
-urdf_filename = "package://mfja_3rd_floor_description/urdf/staubli_tx2_60l.urdf"
-srdf_filename = "package://mfja_3rd_floor_description/srdf/staubli_tx2_60l.srdf"
-
-urdf.loadModel(
-    robot, 0, "staubli", "anchor", urdf_filename, srdf_filename, SE3.Identity()
-)
-
-# Load gear plate
-urdf_filename = "package://mfja_3rd_floor_description/urdf/gear_plate.urdf"
-srdf_filename = "package://mfja_3rd_floor_description/srdf/gear_plate.srdf"
-pose = SE3.Identity()
-pose.translation = np.array([0.52453, -0.1815, 0.0])
-
-urdf.loadModel(robot, 0, "gear_plate", "anchor", urdf_filename, srdf_filename, pose)
-
-# Load gear support
-urdf_filename = "package://mfja_3rd_floor_description/urdf/gear_support.urdf"
-srdf_filename = "package://mfja_3rd_floor_description/srdf/gear_support.srdf"
-pose.translation = np.array([0.58753, 0.039, 0.0])
-
-urdf.loadModel(robot, 0, "gear_support", "anchor", urdf_filename, srdf_filename, pose)
+load_scene(robot)
 
 # Load 2 instances of 42 mm gear
 urdf_filename = "package://mfja_3rd_floor_description/urdf/gear_42.urdf"
@@ -176,9 +156,10 @@ for transition in graph.getTransitions():
         transition, "staubli/joint_6", "gear_42_2/root_joint", float("-inf")
     )
 
+set_environment_margins(graph)
 graph.initialize()
 
-q = neutral(robot.model())
+q = initial_configuration(robot)
 
 # Build initial configuration where
 #     - gear_42_1 is placed on gripper gear_placement/placement_1
@@ -214,6 +195,7 @@ problem.addGoalConfig(q2)
 problem.constraintGraph(graph)
 problem.setParameter("StatesPathFinder/maxDepth", 6)
 problem.setParameter("StatesPathFinder/nTriesUntilBacktrack", 5)
+problem.setParameter("StatesPathFinder/innerPlannerTimeOut", 10.0)
 manipulationPlanner = StatesPathFinder(problem)
 manipulationPlanner.maxIterations(1000)
 p = manipulationPlanner.solve()
