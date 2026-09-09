@@ -20,6 +20,10 @@ robot = Device("mfja")
 
 load_scene(robot)
 
+# Keep the arm facing the fixtures with the elbow in its initial posture.
+robot.setJointBounds("staubli/joint_1", np.deg2rad([-90.0, 90.0]).tolist())
+robot.setJointBounds("staubli/joint_3", [0.0, robot.model().upperPositionLimit[2]])
+
 # Load 2 instances of 42 mm gear
 urdf_filename = "package://mfja_3rd_floor_description/urdf/gear_42.urdf"
 srdf_filename = "package://mfja_3rd_floor_description/srdf/gear_42.srdf"
