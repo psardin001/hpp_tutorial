@@ -34,7 +34,7 @@ class Toppra(_Toppra):
 
 
 class SplineToppra(_Toppra):
-    """Smooth and time consecutive paths belonging to the same transition."""
+    """Smooth transitions, join them within manipulation states, then time."""
 
     def __init__(self, problem, graph):
         super().__init__(problem)
@@ -65,9 +65,19 @@ class SplineToppra(_Toppra):
                 if b - a > 1e-9:
                     groups[-1].appendPath(leaf.extract(a, b))
 
-        timed = Vector(path.outputSize(), path.outputDerivativeSize())
+        states = []
+        previous = None
         for group in groups:
             if group.length() < 1e-6:
                 raise ValueError("Path transition is too short for TOPPRA timing")
+            transition = self.graph.transitionAtParam(group, group.length() / 2)
+            state = str(self.graph.getContainingNode(transition))
+            if state != previous:
+                states.append(Vector(path.outputSize(), path.outputDerivativeSize()))
+                previous = state
+            states[-1].concatenate(self.spline.optimize(group))
+
+        timed = Vector(path.outputSize(), path.outputDerivativeSize())
+        for group in states:
             timed.concatenate(super().optimize(self.spline.optimize(group)))
         return timed

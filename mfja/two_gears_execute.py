@@ -2,7 +2,7 @@
 
 import argparse
 import json
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 
 import numpy as np
@@ -27,7 +27,7 @@ def validate_path(path, graph):
 
 
 def export_plan(file, robot, graph, path, config=None, q_start=None):
-    """Save hpp-exec segments and the six arm joints for the ROS process."""
+    """Save arm trajectories between stops, combining graph transitions."""
     validate_path(path, graph)
     if config is None:
         config = yaml.safe_load(
@@ -38,24 +38,67 @@ def export_plan(file, robot, graph, path, config=None, q_start=None):
     joints = np.asarray(configs)[:, indices]
     if q_start is not None and not np.allclose(joints[0], q_start, atol=1e-6, rtol=0):
         raise RuntimeError("Planning changed the requested arm start configuration")
+    flat = Vector(path.outputSize(), path.outputDerivativeSize())
+    path.flatten(flat)
+    boundaries = np.cumsum(
+        [flat.pathAtRank(i).length() for i in range(flat.numberPaths())]
+    )
+    for t in boundaries[:-1]:
+        if np.linalg.norm(path.derivative(float(t), 1), np.inf) > 1e-6:
+            continue
+        for i, segment in enumerate(segments):
+            if segment.start_time + 1e-9 < t < segment.end_time - 1e-9:
+                index = int(np.argmin(np.abs(np.asarray(times) - t)))
+                state = str(graph.getStateFromConfiguration(configs[index]))
+                segments[i : i + 1] = [
+                    replace(
+                        segment,
+                        end_index=index + 1,
+                        end_time=float(t),
+                        actual_state_after=state,
+                    ),
+                    replace(
+                        segment,
+                        start_index=index,
+                        start_time=float(t),
+                        actual_state_before=state,
+                    ),
+                ]
+                break
     gripper = []
+    groups = []
+    previous = None
     for segment in segments:
         state = str(
             graph.getContainingNode(graph.getTransition(segment.transition_name))
         )
-        gripper.append(
-            "close" if "staubli/tool0_gripper grasps gear_42_" in state else "open"
-        )
+        # Preserve geometric stops within a manipulation state.
+        if (
+            state == previous
+            and np.linalg.norm(path.derivative(segment.start_time, 1), np.inf) > 1e-6
+        ):
+            last = groups[-1]
+            last.end_index = segment.end_index
+            last.end_time = segment.end_time
+            last.state_after = segment.state_after
+            last.actual_state_after = segment.actual_state_after
+            last.transition_name += " -> " + segment.transition_name
+        else:
+            groups.append(segment)
+            gripper.append(
+                "close" if "staubli/tool0_gripper grasps gear_42_" in state else "open"
+            )
+        previous = state
     plan = dict(
         config=config,
         configurations=joints.tolist(),
         times=times,
-        segments=[asdict(segment) for segment in segments],
+        segments=[asdict(segment) for segment in groups],
         gripper=gripper,
     )
     Path(file).write_text(json.dumps(plan, indent=2, allow_nan=False) + "\n")
-    print_segments(segments)
-    return segments
+    print_segments(groups)
+    return groups
 
 
 def validate_plan(plan):
