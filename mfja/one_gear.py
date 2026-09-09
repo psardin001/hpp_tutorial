@@ -1,25 +1,31 @@
 import numpy as np
 from environment import initial_configuration, load_scene, set_environment_margins
 from pinocchio import SE3
-from pyhpp.constraints import ComparisonType, ComparisonTypes, Implicit, Transformation
+from pyhpp.constraints import (
+    ComparisonType,
+    ComparisonTypes,
+    Implicit,
+    RelativeTransformationR3xSO3,
+    Transformation,
+)
 from pyhpp.core import (
     ConfigProjector,
     Progressive,
     ProgressiveProjector,
-    RandomShortcut,
 )
 from pyhpp.manipulation import (
     Device,
     Graph,
     GraphPathValidation,
+    GraphRandomShortcut,
     ManipulationPlanner,
     Problem,
     StatesPathFinder,
     urdf,
 )
 from pyhpp.manipulation.constraint_graph_factory import ConstraintGraphFactory
-from pyhpp_toppra import Toppra
 from pyhpp_viser import Viewer  # noqa: F401
+from tools import Toppra
 
 robot = Device("mfja")
 
@@ -98,6 +104,29 @@ transition = graph.getTransition(
 )
 graph.addNumericalConstraintsToTransition(transition, [vertical_gear_42])
 
+# Guide the gripper along the stud approach axis, keeping its orientation.
+g = robot.grippers()["staubli/tool0_gripper"]
+h = robot.handles()["gear_42/stud"]
+f = RelativeTransformationR3xSO3(
+    "axial gripper",
+    robot,
+    g.getParentJointId(),
+    h.getParentJointId(),
+    g.localPosition,
+    h.localPosition,
+    [True, True, False, True, True, True],
+)
+axial_gripper = Implicit(f, cts, [True, True, True, True, True])
+for name in (
+    "staubli/tool0_gripper > gear_42/stud | f_12",
+    "staubli/tool0_gripper < gear_42/stud | 0-0_21",
+    "staubli/tool0_gripper < gear_42/stud | 0-0:1-1_21",
+    "staubli/tool0_gripper > gear_42/stud | 1-1_12",
+):
+    transition = graph.getTransition(name)
+    graph.addNumericalConstraintsToTransition(transition, [axial_gripper])
+    graph.setShort(transition, True)
+
 # Deactive collision checking between gripper and gear_42 when grasped
 for tr in [
     "staubli/tool0_gripper > gear_42/stud | f_12",
@@ -152,8 +181,7 @@ manipulationPlanner.maxIterations(1000)
 p = manipulationPlanner.solve()
 
 # Optimize the path
-opt1 = RandomShortcut(problem)
-opt1.maxIterations(1000)
+opt1 = GraphRandomShortcut(problem)
 p1 = opt1.optimize(p)
 
 toppra = Toppra(problem)
