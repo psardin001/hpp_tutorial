@@ -151,7 +151,7 @@ for tr in [
         transition, "staubli/joint_6", "gear_42/root_joint", float("-inf")
     )
 
-set_environment_margins(graph)
+set_environment_margins(graph, margin=0.005)
 graph.initialize()
 
 q = initial_configuration(robot)

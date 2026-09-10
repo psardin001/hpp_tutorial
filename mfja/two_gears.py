@@ -160,10 +160,11 @@ for transition in graph.getTransitions():
         transition, "staubli/joint_6", "gear_42_2/root_joint", float("-inf")
     )
 
-set_environment_margins(graph)
+set_environment_margins(graph, margin=0.005)
 graph.initialize()
 
 q = initial_configuration(robot)
+q[:6] = globals().get("q_start", q[:6])
 
 # Build initial configuration where
 #     - gear_42_1 is placed on gripper gear_placement/placement_1
