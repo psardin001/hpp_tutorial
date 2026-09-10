@@ -42,6 +42,8 @@ class SplineToppra(_Toppra):
         self.graph = graph
         self.singleSplineTransitions = ()
         self.spline = SplineGradientBased_bezier3(problem)
+        # Penalize changes of tangent before applying acceleration-limited timing.
+        self.spline.costOrder = 2
         self.spline.maxIterations(100)
 
     def optimize(self, path):
