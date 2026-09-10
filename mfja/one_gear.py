@@ -8,7 +8,11 @@ from pyhpp.constraints import (
     RelativeTransformationR3xSO3,
     Transformation,
 )
-from pyhpp.core import ConfigProjector, Progressive, ProgressiveProjector
+from pyhpp.core import (
+    ConfigProjector,
+    Progressive,
+    ProgressiveProjector,
+)
 from pyhpp.manipulation import (
     Device,
     Graph,
