@@ -2,7 +2,7 @@
 
 from itertools import pairwise
 
-from pyhpp.core import InterpolatedPath
+from pyhpp.core import InterpolatedPath, Straight
 from pyhpp.core.path import Vector
 from pyhpp.manipulation import SplineGradientBased_bezier3
 from pyhpp_toppra import Toppra as _Toppra
@@ -38,7 +38,9 @@ class SplineToppra(_Toppra):
 
     def __init__(self, problem, graph):
         super().__init__(problem)
+        self.straight = Straight(problem)
         self.graph = graph
+        self.singleSplineTransitions = ()
         self.spline = SplineGradientBased_bezier3(problem)
         self.spline.maxIterations(100)
 
@@ -71,6 +73,12 @@ class SplineToppra(_Toppra):
             if group.length() < 1e-6:
                 raise ValueError("Path transition is too short for TOPPRA timing")
             transition = self.graph.transitionAtParam(group, group.length() / 2)
+            if transition.name() in self.singleSplineTransitions:
+                # Fit constrained insertions with one spline between their endpoints.
+                self.straight.constraints(group.pathAtRank(0).constraints())
+                insertion = self.straight(group.initial(), group.end())
+                group = Vector(path.outputSize(), path.outputDerivativeSize())
+                group.appendPath(insertion)
             state = str(self.graph.getContainingNode(transition))
             if state != previous:
                 states.append(Vector(path.outputSize(), path.outputDerivativeSize()))
