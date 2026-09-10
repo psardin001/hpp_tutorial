@@ -156,8 +156,7 @@ def wait_reached(node, config, result, configs):
 
     started = last_progress = time.monotonic()
     previous = configs[0]
-    stable_since = None
-    stable_position = None
+    arrived_since = None
     while time.monotonic() - started < 300:
         q = read_joints(node, config)
         status = read_status(node)
@@ -187,20 +186,17 @@ def wait_reached(node, config, result, configs):
             error <= config["joint_tolerance_rad"]
             and status.in_motion.val == TriState.FALSE
         ):
-            if stable_since is None or np.max(np.abs(q - stable_position)) > 2e-5:
-                stable_since, stable_position = now, q
-            if (
-                now - stable_since >= 0.5
-                and status.trajectory_complete.val == TriState.TRUE
-            ):
+            if status.trajectory_complete.val == TriState.TRUE:
                 return q
+            if arrived_since is None:
+                arrived_since = now
         else:
-            stable_since = None
-        if now - last_progress > 10 and stable_since is None:
+            arrived_since = None
+        if now - last_progress > 10 and arrived_since is None:
             raise RuntimeError(
                 f"Robot immobile hors cible depuis 10 s (écart {np.rad2deg(error):.4f}°)"
             )
-        if stable_since is not None and now - stable_since > 5:
+        if arrived_since is not None and now - arrived_since > 5:
             raise RuntimeError(
                 "Cible atteinte, mais VAL3 ne confirme pas la fin depuis 5 s"
             )
