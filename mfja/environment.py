@@ -66,10 +66,10 @@ def initial_configuration(robot):
     return q
 
 
-def set_environment_margins(graph):
-    """Use a 2 mm arm/fixture margin, above the 1 mm validation tolerance."""
+def set_environment_margins(graph, margin=0.002):
+    """Set the arm/fixture security margin in metres for every transition."""
     for transition in graph.getTransitions():
         for i in range(1, 7):
             graph.setSecurityMarginForTransition(
-                transition, f"staubli/joint_{i}", "universe", 0.002
+                transition, f"staubli/joint_{i}", "universe", margin
             )

@@ -1,4 +1,4 @@
-"""Export a gear plan, execute it all, or advance through its stopped segments."""
+"""Export and execute a TOPPRA gear plan, fully or by stopped segments."""
 
 import argparse
 import json
@@ -47,6 +47,14 @@ def export_plan(file, robot, graph, path, config=None, q_start=None):
     joints = np.asarray(configs)[:, indices]
     if q_start is not None and not np.allclose(joints[0], q_start, atol=1e-6, rtol=0):
         raise RuntimeError("Planning changed the requested arm start configuration")
+    model = robot.model()
+    velocity_indices = [
+        model.joints[model.getJointId("staubli/" + name)].idx_v for name in JOINT_NAMES
+    ]
+    velocities = [
+        np.asarray(path.derivative(float(t), 1))[velocity_indices].tolist()
+        for t in times
+    ]
     flat = Vector(path.outputSize(), path.outputDerivativeSize())
     path.flatten(flat)
     boundaries = np.cumsum(
@@ -101,6 +109,7 @@ def export_plan(file, robot, graph, path, config=None, q_start=None):
     plan = dict(
         config=config,
         configurations=joints.tolist(),
+        velocities=velocities,
         times=times,
         segments=[asdict(segment) for segment in groups],
         gripper=gripper,
@@ -120,6 +129,11 @@ def validate_plan(plan):
         or not (np.diff(times) > 0).all()
     ):
         raise ValueError("Plan samples must be finite and times strictly increasing")
+    if "velocities" not in plan:
+        raise ValueError("Re-export the TOPPRA plan to include joint velocities")
+    velocities = np.asarray(plan["velocities"])
+    if velocities.shape != configs.shape or not np.isfinite(velocities).all():
+        raise ValueError("Expected six finite joint velocities per sample")
     if len(plan["gripper"]) != len(plan["segments"]) or any(
         mode not in ("open", "close") for mode in plan["gripper"]
     ):
@@ -131,6 +145,8 @@ def validate_plan(plan):
         ] + 1 < item["end_index"] <= len(times):
             raise ValueError("Segments must cover the path with shared endpoints")
         previous_end = item["end_index"]
+        if np.max(np.abs(velocities[[item["start_index"], previous_end - 1]])) > 1e-6:
+            raise ValueError("Expected stopped TOPPRA segment endpoints")
     if previous_end != len(times):
         raise ValueError("Segments do not cover the path")
 
@@ -147,6 +163,9 @@ def execute_next(plan, index=0, count=1):
         raise RuntimeError("Valider la calibration avant l'exécution")
 
     configs = np.asarray(plan["configurations"])
+    velocities = np.array(plan["velocities"], dtype=float)
+    for item in plan["segments"]:
+        velocities[[item["start_index"], item["end_index"] - 1]] = 0.0
     config = plan["config"]["execution"]
     with robot_connection() as node:
 
@@ -180,7 +199,7 @@ def execute_next(plan, index=0, count=1):
             plan["times"],
             JOINT_NAMES,
             controller_topic=config["trajectory_action"],
-            positions_only=True,
+            velocities=velocities,
             wait_for_completion=lambda sender, result, points: wait_reached(
                 sender, config, result, points
             ),
@@ -191,10 +210,14 @@ def execute_next(plan, index=0, count=1):
 
 def execute_all(plan, start=0):
     """Execute the plan from start through its final segment."""
-    return execute_next(plan, start, len(plan["segments"]) - start)
+    index = execute_next(plan, start, len(plan["segments"]) - start)
+    if index > start:
+        print("Plan terminé ; cible finale et arrêt confirmés.", flush=True)
+    return index
 
 
 def prompt_execution(plan):
+    print("Exécution avec les vitesses TOPPRA exportées.", flush=True)
     index = 0
     while index < len(plan["segments"]):
         answer = input(
@@ -210,12 +233,37 @@ def prompt_execution(plan):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("file", type=Path)
+    parser.add_argument("file", type=Path, nargs="?", help="plan déjà exporté")
+    parser.add_argument(
+        "--execute", action="store_true", help="planifier depuis le robot et exécuter"
+    )
+    parser.add_argument(
+        "--start", nargs=6, type=float, metavar="DEG", help="départ hors ligne"
+    )
+    parser.add_argument("--plan", type=Path, help="fichier du nouveau plan")
+    parser.add_argument("--seed", type=int, default=97, help="graine de planification")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--segment", type=int, help="indice du segment (à partir de 0)")
     mode.add_argument("--all", action="store_true", help="exécuter tout le plan")
     args = parser.parse_args()
-    plan = json.loads(args.file.read_text())
+    if args.file is not None:
+        if args.execute or args.start is not None or args.plan is not None:
+            parser.error("Choisir un plan existant ou une nouvelle planification")
+        plan = json.loads(args.file.read_text())
+    else:
+        if args.segment is not None:
+            parser.error("--segment nécessite un plan déjà exporté")
+        if args.execute and args.start is not None:
+            parser.error("--execute utilise la position mesurée ; retirer --start")
+        if args.all and not args.execute:
+            parser.error("--all nécessite --execute ou un plan déjà exporté")
+        from one_gear_execute import plan_from_start
+
+        args.plan = args.plan or Path("two-gears.json")
+        plan_from_start("two_gears.py", args)
+        if not args.execute:
+            return
+        plan = json.loads(args.plan.read_text())
     if args.all:
         execute_all(plan)
     elif args.segment is not None:
