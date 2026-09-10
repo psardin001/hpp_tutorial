@@ -192,6 +192,9 @@ opt1.maxIterations(1000)
 p1 = opt1.optimize(p)
 
 toppra = SplineToppra(problem, graph)
+toppra.singleSplineTransitions = (
+    "gear_support/gear_42_1 > gear_42/gear_support | 0-0_12",
+)
 toppra.velocityScale = 0.5
 toppra.N = 100
 toppra.selectJoints([f"staubli/joint_{i}" for i in range(1, 7)])
