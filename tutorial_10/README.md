@@ -8,7 +8,8 @@ Use the tutorial checkout containing `tutorial_10`.
 
 ## Overview
 
-We use the MFJA pick-and-place problem to move a gear between two placements
+MFJA is an academic facility located in Toulouse, France hosting a robotics platform that includes a Stäubli robot.
+We use the pick-and-place problem to move a gear between two placements
 on the plate. First, send the arm trajectory with no gripper commands. Then
 add actions to open and close the gripper during execution.
 
