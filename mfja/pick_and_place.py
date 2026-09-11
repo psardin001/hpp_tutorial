@@ -1,30 +1,22 @@
 import numpy as np
 from pinocchio import SE3, neutral
+from environment import initial_configuration, load_scene, set_environment_margins
 from pyhpp.constraints import (ComparisonType, ComparisonTypes, Implicit, Position)
 from pyhpp.core import (ConfigProjector, Discretized, Progressive, RandomShortcut)
-from pyhpp.manipulation import (Device, Graph, GraphPathValidation,
+from pyhpp.manipulation import (Device, Graph, GraphPathValidation, GraphRandomShortcut,
                                 Problem, ManipulationPlanner, SplineGradientBased_bezier3, urdf)
 from pyhpp.manipulation.constraint_graph_factory import ConstraintGraphFactory
-from pyhpp_toppra import Toppra
 from pyhpp_viser import Viewer
+from tools import SplineToppra
 
 
 robot = Device("mfja")
 
-# Load Staubli robot
-urdf_filename = "package://mfja_3rd_floor_description/urdf/staubli_tx2_60l.urdf"
-srdf_filename = "package://mfja_3rd_floor_description/srdf/staubli_tx2_60l.srdf"
+load_scene(robot)
 
-urdf.loadModel(robot, 0, "staubli", "anchor", urdf_filename, srdf_filename, SE3.Identity())
-
-# Load gear plate
-urdf_filename = "package://mfja_3rd_floor_description/urdf/gear_plate.urdf"
-srdf_filename = "package://mfja_3rd_floor_description/srdf/gear_plate.srdf"
-pose = SE3.Identity()
-pose.translation = np.array([.6, .15, 0.])
-
-urdf.loadModel(robot, 0, "gear_plate", "anchor", urdf_filename, srdf_filename,
-               pose)
+# Keep the arm facing the fixtures with the elbow in its initial posture.
+robot.setJointBounds("staubli/joint_1", np.deg2rad([-90.0, 90.0]).tolist())
+robot.setJointBounds("staubli/joint_3", [0.0, robot.model().upperPositionLimit[2]])
 
 # Load 42 mm gear
 urdf_filename = "package://mfja_3rd_floor_description/urdf/gear_42.urdf"
@@ -67,9 +59,11 @@ for tr in [
     graph.setSecurityMarginForTransition(transition, "staubli/joint_6", "gear_42/root_joint",
                                          float("-inf"))
 
+set_environment_margins(graph, margin=0.005)
 graph.initialize()
 
-q = neutral(robot.model())
+q = initial_configuration(robot)
+q[:6] = globals().get("q_start", q[:6])
 
 # Build a configuration where gear_42 is placed on gripper gear_placement/placement_1
 g = robot.grippers()["gear_plate/placement_1"]
@@ -96,13 +90,17 @@ manipulationPlanner.maxIterations(1000)
 p = manipulationPlanner.solve()
 
 # Optimize the path
-opt1 = RandomShortcut(problem)
+opt1 = GraphRandomShortcut(problem)
 opt1.maxIterations(1000)
 p1 = opt1.optimize(p)
 
-toppra = Toppra(problem)
+toppra = SplineToppra(problem, graph)
+toppra.singleSplineTransitions = (
+    "gear_support/gear_42_1 > gear_42/gear_support | 0-0_12",
+)
 toppra.velocityScale = 0.5
 toppra.N = 100
-toppra.selectJoints([f"staubli/joint_{i}" for i in range(1,7)])
-toppra.accelerationLimits = np.array(6 * [0.5])
+toppra.selectJoints([f"staubli/joint_{i}" for i in range(1, 7)])
+# Reserve 10% of the 0.5 rad/s² limit for numerical projection effects.
+toppra.accelerationLimits = np.array(6 * [0.45])
 p2 = toppra.optimize(p1)
