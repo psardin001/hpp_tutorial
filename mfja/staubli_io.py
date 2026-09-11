@@ -157,11 +157,17 @@ def wait_reached(node, config, result, configs):
     started = last_progress = time.monotonic()
     previous = configs[0]
     arrived_since = None
+    trajectory_started = False
     while time.monotonic() - started < 300:
         q = read_joints(node, config)
         status = read_status(node)
         now = time.monotonic()
         error = float(np.max(np.abs(q - configs[-1])))
+        trajectory_started = trajectory_started or (
+            status.trajectory_complete.val == TriState.FALSE
+            or np.max(np.abs(q - configs[0])) > config["joint_tolerance_rad"]
+            or result.done()
+        )
         if result.done():
             reply = result.result()
             if (
@@ -183,7 +189,8 @@ def wait_reached(node, config, result, configs):
             previous = q
             last_progress = now
         if (
-            error <= config["joint_tolerance_rad"]
+            trajectory_started
+            and error <= config["joint_tolerance_rad"]
             and status.in_motion.val == TriState.FALSE
         ):
             if status.trajectory_complete.val == TriState.TRUE:
