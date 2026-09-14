@@ -1,14 +1,18 @@
 import numpy as np
-from pinocchio import SE3, neutral
 from environment import initial_configuration, load_scene, set_environment_margins
-from pyhpp.constraints import (ComparisonType, ComparisonTypes, Implicit, Position)
-from pyhpp.core import (ConfigProjector, Discretized, Progressive, RandomShortcut)
-from pyhpp.manipulation import (Device, Graph, GraphPathValidation, GraphRandomShortcut,
-                                Problem, ManipulationPlanner, SplineGradientBased_bezier3, urdf)
+from pinocchio import SE3
+from pyhpp.core import ConfigProjector, Progressive
+from pyhpp.manipulation import (
+    Device,
+    Graph,
+    GraphPathValidation,
+    GraphRandomShortcut,
+    ManipulationPlanner,
+    Problem,
+    urdf,
+)
 from pyhpp.manipulation.constraint_graph_factory import ConstraintGraphFactory
-from pyhpp_viser import Viewer
 from tools import SplineToppra
-
 
 robot = Device("mfja")
 
@@ -22,15 +26,25 @@ robot.setJointBounds("staubli/joint_3", [0.0, robot.model().upperPositionLimit[2
 urdf_filename = "package://mfja_3rd_floor_description/urdf/gear_42.urdf"
 srdf_filename = "package://mfja_3rd_floor_description/srdf/gear_42.srdf"
 
-urdf.loadModel(robot, 0, "gear_42", "freeflyer", urdf_filename, srdf_filename, SE3.Identity())
+urdf.loadModel(
+    robot, 0, "gear_42", "freeflyer", urdf_filename, srdf_filename, SE3.Identity()
+)
 
-robot.setJointBounds("gear_42/root_joint", [-1., 1.,
-    -1., 1.,
-    -0.2, 1.5,])
+robot.setJointBounds(
+    "gear_42/root_joint",
+    [
+        -1.0,
+        1.0,
+        -1.0,
+        1.0,
+        -0.2,
+        1.5,
+    ],
+)
 
 problem = Problem(robot)
-problem.pathValidation(GraphPathValidation(Progressive(robot, .001)))
-problem.pathValidationFactory(GraphPathValidation(Progressive(robot, .001)))
+problem.pathValidation(GraphPathValidation(Progressive(robot, 0.001)))
+problem.pathValidationFactory(GraphPathValidation(Progressive(robot, 0.001)))
 
 graph = Graph("robot", robot, problem)
 factory = ConstraintGraphFactory(graph)
@@ -47,17 +61,18 @@ factory.generate()
 
 # Deactive collision checking between gripper and gear_42 when grasped
 for tr in [
-        "staubli/tool0_gripper > gear_42/stud | f_12",
-        "staubli/tool0_gripper < gear_42/stud | 0-0_21",
-        "staubli/tool0_gripper > gear_42/stud | f_23",
-        "staubli/tool0_gripper < gear_42/stud | 0-0_32",
-        "staubli/tool0_gripper > gear_42/stud | f_34",
-        "staubli/tool0_gripper < gear_42/stud | 0-0_43",
-        "Loop | 0-0",
+    "staubli/tool0_gripper > gear_42/stud | f_12",
+    "staubli/tool0_gripper < gear_42/stud | 0-0_21",
+    "staubli/tool0_gripper > gear_42/stud | f_23",
+    "staubli/tool0_gripper < gear_42/stud | 0-0_32",
+    "staubli/tool0_gripper > gear_42/stud | f_34",
+    "staubli/tool0_gripper < gear_42/stud | 0-0_43",
+    "Loop | 0-0",
 ]:
     transition = graph.getTransition(tr)
-    graph.setSecurityMarginForTransition(transition, "staubli/joint_6", "gear_42/root_joint",
-                                         float("-inf"))
+    graph.setSecurityMarginForTransition(
+        transition, "staubli/joint_6", "gear_42/root_joint", float("-inf")
+    )
 
 set_environment_margins(graph, margin=0.005)
 graph.initialize()
