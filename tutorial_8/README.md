@@ -27,7 +27,7 @@ built it yet, see the [tutorial 6 instructions](../tutorial_6/README.md).
 Launch Gazebo with the FR3 and its gripper:
 
 ```
-ros2 launch hpp_tutorial tutorial_7_launch.py
+ros2 launch hpp_tutorial tutorial_8_launch.py
 ```
 
 Wait until you see `Configured and activated gripper_controller` in the output.
@@ -161,6 +161,7 @@ segments_by_name = segments_by_transition(segments)
 segments[0].pre_actions.append(open_gripper)
 for segment in segments_by_name[GRASP_TRANSITION]:
     segment.pre_actions.append(grasp_box)
+
 for segment in segments_by_name[RELEASE_TRANSITION]:
     segment.pre_actions.append(release_box)
 
