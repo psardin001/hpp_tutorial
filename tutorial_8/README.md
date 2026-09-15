@@ -27,7 +27,7 @@ built it yet, see the [tutorial 6 instructions](../tutorial_6/README.md).
 Launch Gazebo with the FR3 and its gripper:
 
 ```
-ros2 launch hpp_tutorial tutorial_7_launch.py
+ros2 launch hpp_tutorial tutorial_8_launch.py
 ```
 
 Wait until you see `Configured and activated gripper_controller` in the output.
