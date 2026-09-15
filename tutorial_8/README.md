@@ -161,6 +161,7 @@ segments_by_name = segments_by_transition(segments)
 segments[0].pre_actions.append(open_gripper)
 for segment in segments_by_name[GRASP_TRANSITION]:
     segment.pre_actions.append(grasp_box)
+
 for segment in segments_by_name[RELEASE_TRANSITION]:
     segment.pre_actions.append(release_box)
 
