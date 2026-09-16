@@ -120,3 +120,5 @@ You can also play the reverse motion using
 ```
 p_reversed = p_timed.reverse()
 ```
+
+Continue to [tutorial 8](../tutorial_8/README.md).

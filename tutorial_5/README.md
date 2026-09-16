@@ -130,3 +130,5 @@ You can visualize the path in the viewer:
 v = display()
 v.loadPath(p3)
 ```
+
+Continue to [tutorial 6](../tutorial_6/README.md).

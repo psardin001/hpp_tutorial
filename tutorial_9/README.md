@@ -173,3 +173,5 @@ carries it to the goal, opens again, and retreats.
 
 `reset_box_pose()` detaches the simulated box if needed and places it back at
 the planned start pose before execution.
+
+Continue to [exercise 10](../exercise_10/README.md).
