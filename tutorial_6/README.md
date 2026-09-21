@@ -167,3 +167,5 @@ Landmarks can be placed in three ways:
 | `v.setProblem(problem)` | Register problem for graph viewer |
 | `v.setGraph(graph)` | Register constraint graph for graph viewer |
 | `v.launch_graph_viewer()` | Open the constraint graph viewer (React app) |
+
+Continue to [tutorial 7](../tutorial_7/README.md).
