@@ -1,3 +1,4 @@
+# ruff: noqa: F401 -- Imports used when completing the exercise.
 import numpy as np
 from environment import initial_configuration, load_scene, set_environment_margins
 from pinocchio import SE3
@@ -65,7 +66,6 @@ graph.maxIterations(40)
 graph.errorThreshold(1e-5)
 
 # TODO: Build the constraint graph using the factory as in tutorial_1
-
 
 
 # Initialize the graph once constructed
